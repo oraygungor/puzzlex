@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku Puzzle Creator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(0, 1fr));
+            grid-template-rows: repeat(9, minmax(0, 1fr));
+            width: 100%;
+            max-width: 500px;
+            aspect-ratio: 1 / 1;
+            border: 3px solid #1f2937; /* gray-800 */
+            border-radius: 8px;
+            gap: 1px;
+            background-color: #374151; /* gray-700 */
+            position: relative; /* For the SVG overlay */
+        }
+        .sudoku-cell {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9fafb; /* gray-50 */
+            font-size: 1.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out;
+            border: 1px solid #d1d5db; /* gray-300 */
+            z-index: 1; /* Cells are on a lower layer */
+        }
+        #thermo-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Clicks go through to the cells */
+            z-index: 2; /* Thermometers are on a higher layer */
+        }
+        .tool-btn.active {
+            background-color: #60a5fa;
+            color: white;
+            border-color: #2563eb;
+        }
+        /* Constraint Styles */
+        .constraint-icon {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3; /* Icons are on top */
+        }
+        .even-constraint { background-color: #fca5a5 !important; }
+        .odd-constraint { background-color: #93c5fd !important; }
+        .yellow-region { background-color: #fef08a !important; }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-lg mx-auto">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-4">Sudoku Creator</h1>
+        
+        <!-- Tool Info Display -->
+        <div id="tool-info" class="text-center mb-4 p-3 bg-gray-200 rounded-lg shadow-inner min-h-[80px]">
+            <h4 id="tool-name" class="font-bold text-lg text-gray-800"></h4>
+            <p id="tool-description" class="text-sm text-gray-600"></p>
+        </div>
+
+        <p id="message-area" class="text-center text-gray-600 mb-4 h-6 font-semibold"></p>
+
+        <!-- Sudoku Grid -->
+        <div id="sudoku-board" class="sudoku-grid mx-auto shadow-lg">
+            <svg id="thermo-layer"></svg>
+        </div>
+
+        <!-- Palettes -->
+        <div class="flex flex-col md:flex-row justify-around">
+            <div class="mt-4 text-center">
+                <h3 class="text-lg font-semibold text-gray-700">Numbers</h3>
+                <div id="number-palette" class="flex justify-center flex-wrap gap-1 sm:gap-2 my-2"></div>
+            </div>
+            <div class="mt-4 text-center">
+                <h3 class="text-lg font-semibold text-gray-700">Creator Tools</h3>
+                <div id="creator-tools" class="flex justify-center flex-wrap gap-1 sm:gap-2 my-2"></div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex justify-center flex-wrap gap-2 mt-4">
+            <button id="solve-btn" class="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg shadow-md hover:bg-green-700">Solve</button>
+            <button id="save-btn" class="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700">Save</button>
+            <button id="load-btn" class="px-6 py-2 bg-yellow-500 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-600">Load</button>
+            <button id="new-puzzle-btn" class="px-6 py-2 bg-gray-800 text-white font-semibold rounded-lg shadow-md hover:bg-gray-900">New Puzzle</button>
+        </div>
+    </div>
+
+    <!-- Save/Load Modal -->
+    <div id="modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 id="modal-title" class="text-2xl font-bold mb-4">Puzzle Code</h2>
+            <textarea id="modal-textarea" class="w-full h-32 p-2 border rounded-md mb-4 font-mono text-sm"></textarea>
+            <div class="flex justify-end space-x-2">
+                <button id="modal-action-btn" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Copy</button>
+                <button id="modal-close-btn" class="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const boardElement = document.getElementById('sudoku-board');
+        const numberPalette = document.getElementById('number-palette');
+        const creatorTools = document.getElementById('creator-tools');
+        const messageArea = document.getElementById('message-area');
+        const toolNameEl = document.getElementById('tool-name');
+        const toolDescEl = document.getElementById('tool-description');
+        
+        // --- Game State ---
+        let currentBoard = [];
+        let constraints = {};
+        let thermometers = [];
+        let currentThermometerPath = [];
+        let currentTool = 'number-1';
+
+        const initialBoard = Array(9).fill().map(() => Array(9).fill(0));
+
+        const toolInfo = {
+            'max': { name: 'Max', description: 'The digit in this cell must be greater than its 4 adjacent neighbors (up, down, left, right).' },
+            'min': { name: 'Min', description: 'The digit in this cell must be smaller than its 4 adjacent neighbors (up, down, left, right).' },
+            'even': { name: 'Even', description: 'The digit in this cell must be even (2, 4, 6, 8).' },
+            'odd': { name: 'Odd', description: 'The digit in this cell must be odd (1, 3, 5, 7, 9).' },
+            'yellow': { name: 'Yellow Region', description: 'All cells in a connected yellow region must contain unique digits.' },
+            'thermo': { name: 'Thermometer', description: 'Digits must strictly increase along the thermometer, starting from the bulb.' },
+            'number-0': { name: 'Eraser', description: 'Click a cell to remove its number.' }
+        };
+        for (let i = 1; i <= 9; i++) {
+            toolInfo[`number-${i}`] = { name: `Place Number ${i}`, description: `Click a cell to place the digit ${i}.` };
+        }
+
+        // --- Game Initialization ---
+        function init() {
+            currentBoard = initialBoard.map(row => [...row]);
+            constraints = {};
+            thermometers = [];
+            currentThermometerPath = [];
+            createGrid();
+            createNumberPalette();
+            createCreatorTools();
+            addEventListeners();
+            setCurrentTool('number-1');
+        }
+
+        function addEventListeners() {
+            document.getElementById('solve-btn').addEventListener('click', solveSudoku);
+            document.getElementById('save-btn').addEventListener('click', showSaveModal);
+            document.getElementById('load-btn').addEventListener('click', showLoadModal);
+            document.getElementById('new-puzzle-btn').addEventListener('click', () => {
+                if (window.confirm("Are you sure? This will clear the entire puzzle.")) init();
+            });
+            document.getElementById('modal-close-btn').addEventListener('click', () => document.getElementById('modal').classList.add('hidden'));
+            new ResizeObserver(drawThermometers).observe(boardElement);
+        }
+
+        // --- UI Creation ---
+        function createGrid() {
+            boardElement.innerHTML = '<svg id="thermo-layer"></svg>';
+            messageArea.textContent = '';
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('sudoku-cell');
+                    cell.dataset.row = r;
+                    cell.dataset.col = c;
+                    cell.addEventListener('click', () => handleCellClick(cell));
+                    if (currentBoard[r][c] !== 0) {
+                        cell.textContent = currentBoard[r][c];
+                    }
+                    updateCellVisuals(cell, r, c);
+                    boardElement.appendChild(cell);
+                }
+            }
+            requestAnimationFrame(drawThermometers);
+        }
+
+        function createNumberPalette() {
+            numberPalette.innerHTML = '';
+            for (let i = 1; i <= 9; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.id = `tool-number-${i}`;
+                button.classList.add('tool-btn', 'w-12', 'h-12', 'bg-white', 'text-gray-800', 'font-bold', 'rounded-md', 'shadow-sm', 'border');
+                button.addEventListener('click', () => setCurrentTool(`number-${i}`));
+                numberPalette.appendChild(button);
+            }
+            const eraser = document.createElement('button');
+            eraser.id = 'tool-number-0';
+            eraser.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+            eraser.classList.add('tool-btn', 'w-12', 'h-12', 'bg-white', 'text-gray-800', 'font-bold', 'rounded-md', 'shadow-sm', 'border');
+            eraser.addEventListener('click', () => setCurrentTool('number-0'));
+            numberPalette.appendChild(eraser);
+        }
+
+        function createCreatorTools() {
+            creatorTools.innerHTML = '';
+            const tools = [
+                { id: 'max', title: 'Max', html: `<svg class="w-8 h-8 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5V19M5 12H19"/></svg>` },
+                { id: 'min', title: 'Min', html: `<svg class="w-8 h-8 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12H19"/></svg>` },
+                { id: 'even', title: 'Even', html: `<div class="w-8 h-8 bg-red-300 rounded-sm"></div>` },
+                { id: 'odd', title: 'Odd', html: `<div class="w-8 h-8 bg-blue-300 rounded-sm"></div>` },
+                { id: 'yellow', title: 'Yellow Region', html: `<div class="w-8 h-8 bg-yellow-200 rounded-sm"></div>` },
+                { id: 'thermo', title: 'Thermometer', html: `<svg class="w-8 h-8 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="16" r="3"/><path d="M12 13V5"/><path d="M12 5h2"/><path d="M12 5h-2"/></svg>` }
+            ];
+            tools.forEach(tool => {
+                const btn = document.createElement('button');
+                btn.id = `tool-${tool.id}`;
+                btn.classList.add('tool-btn', 'w-12', 'h-12', 'bg-white', 'rounded-md', 'shadow-sm', 'flex', 'items-center', 'justify-center', 'border');
+                btn.innerHTML = tool.html;
+                btn.title = tool.title;
+                btn.addEventListener('click', () => setCurrentTool(tool.id));
+                creatorTools.appendChild(btn);
+            });
+        }
+
+        // --- Save/Load Logic ---
+        function generatePuzzleCode() {
+            const puzzleData = { board: currentBoard, constraints: constraints, thermometers: thermometers };
+            return btoa(JSON.stringify(puzzleData));
+        }
+
+        function loadPuzzleFromCode(code) {
+            try {
+                const puzzleData = JSON.parse(atob(code));
+                currentBoard = puzzleData.board || initialBoard.map(row => [...row]);
+                constraints = puzzleData.constraints || {};
+                thermometers = puzzleData.thermometers || [];
+                createGrid();
+                document.getElementById('modal').classList.add('hidden');
+                messageArea.textContent = "Puzzle loaded successfully!";
+            } catch (e) {
+                alert("Invalid puzzle code.");
+            }
+        }
+
+        function showSaveModal() {
+            const modal = document.getElementById('modal');
+            document.getElementById('modal-title').textContent = 'Save Puzzle Code';
+            const textarea = document.getElementById('modal-textarea');
+            textarea.value = generatePuzzleCode();
+            textarea.readOnly = true;
+            document.getElementById('modal-action-btn').textContent = 'Copy to Clipboard';
+            document.getElementById('modal-action-btn').onclick = () => {
+                textarea.select();
+                document.execCommand('copy');
+                messageArea.textContent = 'Code copied!';
+            };
+            modal.classList.remove('hidden');
+        }
+
+        function showLoadModal() {
+            const modal = document.getElementById('modal');
+            document.getElementById('modal-title').textContent = 'Load Puzzle Code';
+            const textarea = document.getElementById('modal-textarea');
+            textarea.value = '';
+            textarea.readOnly = false;
+            textarea.placeholder = 'Paste your puzzle code here...';
+            document.getElementById('modal-action-btn').textContent = 'Load Puzzle';
+            document.getElementById('modal-action-btn').onclick = () => loadPuzzleFromCode(textarea.value);
+            modal.classList.remove('hidden');
+        }
+
+        // --- Thermometer Drawing ---
+        function drawThermometers() {
+            const svg = document.getElementById('thermo-layer');
+            if (!svg) return;
+            svg.innerHTML = '';
+            const cellElements = document.querySelectorAll('.sudoku-cell');
+            if (cellElements.length === 0 || cellElements[0].offsetWidth === 0) return;
+
+            const cellWidth = cellElements[0].offsetWidth;
+            const cellHeight = cellElements[0].offsetHeight;
+            const gap = 1; 
+            
+            const getCenter = (r, c) => ({
+                x: c * (cellWidth + gap) + cellWidth / 2,
+                y: r * (cellHeight + gap) + cellHeight / 2
+            });
+            
+            const transparentGreen = 'rgba(34, 197, 94, 0.5)';
+
+            const allPaths = [...thermometers, currentThermometerPath];
+            allPaths.forEach(path => {
+                if (path.length === 0) return;
+                if (path.length > 1) {
+                    let pathString = `M ${getCenter(path[0][0], path[0][1]).x} ${getCenter(path[0][0], path[0][1]).y}`;
+                    for (let i = 1; i < path.length; i++) {
+                        pathString += ` L ${getCenter(path[i][0], path[i][1]).x} ${getCenter(path[i][0], path[i][1]).y}`;
+                    }
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    line.setAttribute('d', pathString);
+                    line.setAttribute('stroke', transparentGreen);
+                    line.setAttribute('stroke-width', cellWidth / 2);
+                    line.setAttribute('stroke-linecap', 'round');
+                    line.setAttribute('stroke-linejoin', 'round');
+                    line.setAttribute('fill', 'none');
+                    svg.appendChild(line);
+                }
+                const bulb = getCenter(path[0][0], path[0][1]);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', bulb.x);
+                circle.setAttribute('cy', bulb.y);
+                circle.setAttribute('r', cellWidth / 2.5);
+                circle.setAttribute('fill', transparentGreen);
+                svg.appendChild(circle);
+            });
+        }
+        
+        // --- Event Handlers & Logic ---
+        function setCurrentTool(toolName) {
+            if (currentTool === 'thermo' && currentThermometerPath.length > 1) {
+                thermometers.push(currentThermometerPath);
+            }
+            currentThermometerPath = [];
+            currentTool = toolName;
+            
+            document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById(`tool-${toolName}`);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const info = toolInfo[toolName];
+            if (info) {
+                toolNameEl.textContent = info.name;
+                toolDescEl.textContent = info.description;
+            } else {
+                toolNameEl.textContent = '';
+                toolDescEl.textContent = '';
+            }
+
+            drawThermometers();
+        }
+
+        function handleCellClick(cell) {
+            const r = parseInt(cell.dataset.row);
+            const c = parseInt(cell.dataset.col);
+
+            if (currentTool.startsWith('number-')) {
+                const number = parseInt(currentTool.split('-')[1]);
+                cell.textContent = number === 0 ? '' : number;
+                currentBoard[r][c] = number;
+            } else if (currentTool === 'thermo') {
+                handleThermoClick(r, c);
+            } else {
+                toggleConstraint(cell, r, c, currentTool);
+            }
+        }
+
+        function handleThermoClick(r, c) {
+            const lastPos = currentThermometerPath.length > 0 ? currentThermometerPath[currentThermometerPath.length - 1] : null;
+            if (lastPos && lastPos[0] === r && lastPos[1] === c) {
+                setCurrentTool('thermo');
+                return;
+            }
+            if (currentThermometerPath.some(p => p[0] === r && p[1] === c)) return;
+            const isAdj = lastPos ? Math.abs(lastPos[0] - r) <= 1 && Math.abs(lastPos[1] - c) <= 1 : true;
+            if (isAdj) {
+                currentThermometerPath.push([r, c]);
+                drawThermometers();
+            }
+        }
+
+        // --- Sudoku Logic (Check/Solve) ---
+        function solveSudoku() {
+            const boardCopy = currentBoard.map(row => [...row]);
+            messageArea.textContent = "Solving...";
+            setTimeout(() => {
+                if (solve(boardCopy)) {
+                    currentBoard = boardCopy;
+                    createGrid();
+                    messageArea.textContent = 'Puzzle Solved!';
+                } else {
+                    messageArea.textContent = 'This puzzle is unsolvable.';
+                }
+            }, 10);
+        }
+        
+        function solve(board) {
+            const find = findEmpty(board);
+            if (!find) return true;
+            const [row, col] = find;
+            for (let num = 1; num <= 9; num++) {
+                if (isSafe(board, row, col, num)) {
+                    board[row][col] = num;
+                    if (solve(board)) return true;
+                    board[row][col] = 0;
+                }
+            }
+            return false;
+        }
+
+        function findEmpty(board) {
+            for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) {
+                if (board[r][c] === 0) return [r, c];
+            }
+            return null;
+        }
+
+        function isSafe(board, row, col, num) {
+            // 1. Classic Sudoku rules
+            for (let x = 0; x < 9; x++) if (board[row][x] === num && x !== col) return false;
+            for (let x = 0; x < 9; x++) if (board[x][col] === num && x !== row) return false;
+            const startRow = row - row % 3, startCol = col - col % 3;
+            for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) {
+                const r = startRow + i, c = startCol + j;
+                if (board[r][c] === num && (r !== row || c !== col)) return false;
+            }
+
+            // 2. Single-cell constraints
+            const key = `${row},${col}`;
+            const constraint = constraints[key];
+            if (constraint === 'even' && num % 2 !== 0) return false;
+            if (constraint === 'odd' && num % 2 === 0) return false;
+
+            // 3. Yellow Region Constraint
+            if (constraint === 'yellow') {
+                const regionCells = [];
+                const queue = [[row, col]];
+                const visited = new Set([`${row},${col}`]);
+                while (queue.length > 0) {
+                    const [r, c] = queue.shift();
+                    regionCells.push([r, c]);
+                    const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+                    for (const [dr, dc] of directions) {
+                        const nr = r + dr, nc = c + dc;
+                        const neighborKey = `${nr},${nc}`;
+                        if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9 && !visited.has(neighborKey) && constraints[neighborKey] === 'yellow') {
+                            visited.add(neighborKey);
+                            queue.push([nr, nc]);
+                        }
+                    }
+                }
+                for (const [r, c] of regionCells) {
+                    if (r === row && c === col) continue;
+                    if (board[r][c] === num) return false;
+                }
+            }
+
+            // 4. Thermometer
+            const allThermos = [...thermometers, currentThermometerPath];
+            for (const thermo of allThermos) for (let i = 0; i < thermo.length; i++) {
+                if (thermo[i][0] === row && thermo[i][1] === col) {
+                    if (i > 0) {
+                        const prevVal = board[thermo[i-1][0]][thermo[i-1][1]];
+                        if (prevVal !== 0 && num <= prevVal) return false;
+                    }
+                    if (i < thermo.length - 1) {
+                        const nextVal = board[thermo[i+1][0]][thermo[i+1][1]];
+                        if (nextVal !== 0 && num >= nextVal) return false;
+                    }
+                }
+            }
+
+            // 5. Max/Min (Orthogonal Only)
+            const orthoDirections = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            if (constraint === 'max') {
+                for (const [dr, dc] of orthoDirections) {
+                    const nr = row + dr, nc = col + dc;
+                    if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9 && board[nr][nc] !== 0 && num <= board[nr][nc]) return false;
+                }
+            }
+            if (constraint === 'min') {
+                for (const [dr, dc] of orthoDirections) {
+                    const nr = row + dr, nc = col + dc;
+                    if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9 && board[nr][nc] !== 0 && num >= board[nr][nc]) return false;
+                }
+            }
+            for (const [dr, dc] of orthoDirections) {
+                const nr = row + dr, nc = col + dc;
+                if (nr >= 0 && nr < 9 && nc >= 0 && nc < 9) {
+                    const neighborConstraint = constraints[`${nr},${nc}`];
+                    const neighborValue = board[nr][nc];
+                    if (neighborValue !== 0) {
+                        if (neighborConstraint === 'max' && neighborValue <= num) return false;
+                        if (neighborConstraint === 'min' && neighborValue >= num) return false;
+                    }
+                }
+            }
+            return true;
+        }
+        
+        // --- Other helper functions ---
+        function toggleConstraint(cell, r, c, constraintType) {
+            const key = `${r},${c}`;
+            constraints[key] = constraints[key] === constraintType ? undefined : constraintType;
+            updateCellVisuals(cell, r, c);
+        }
+        function updateCellVisuals(cell, r, c) {
+            const key = `${r},${c}`;
+            const constraint = constraints[key];
+            cell.classList.remove('even-constraint', 'odd-constraint', 'yellow-region');
+            const existingIcon = cell.querySelector('.constraint-icon');
+            if(existingIcon) cell.removeChild(existingIcon);
+            if (constraint === 'max') addMaxVisual(cell);
+            else if (constraint === 'min') addMinVisual(cell);
+            else if (constraint === 'even') cell.classList.add('even-constraint');
+            else if (constraint === 'odd') cell.classList.add('odd-constraint');
+            else if (constraint === 'yellow') cell.classList.add('yellow-region');
+        }
+        function addMaxVisual(cell) {
+            const icon = document.createElement('div');
+            icon.classList.add('constraint-icon');
+            icon.innerHTML = `<svg class="w-3/4 h-3/4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5V19M5 12H19"/></svg>`;
+            cell.insertBefore(icon, cell.firstChild);
+        }
+        function addMinVisual(cell) {
+            const icon = document.createElement('div');
+            icon.classList.add('constraint-icon');
+            icon.innerHTML = `<svg class="w-3/4 h-3/4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M5 12H19"/></svg>`;
+            cell.insertBefore(icon, cell.firstChild);
+        }
+        
+        // --- Start the game ---
+        window.onload = init;
+    </script>
+</body>
+</html>
